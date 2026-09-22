@@ -1,0 +1,15 @@
+{
+  "version": "jd-intake-standard-v1",
+  "required_for_ready": ["title", "roleSummary", "responsibilities", "mustHave"],
+  "field_labels": {
+    "title": "岗位名称",
+    "department": "所属部门",
+    "location": "地区/城市",
+    "employmentType": "用工形式",
+    "headcount": "招聘人数",
+    "roleSummary": "岗位使命/概述",
+    "responsibilities": "核心职责",
+    "mustHave": "必须条件",
+    "niceToHave": "加分项"
+  }
+}

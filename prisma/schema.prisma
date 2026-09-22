@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model JobDraft {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  jobId              String
+  coreRoleVersionId  String
+  revision           Int      @default(1)
+  status             String   @default("draft")
+  roleSummary        String?
+  responsibilities   Json
+  requirements       Json
+  dimensions         Json
+  hiringContext      Json?
+  successCriteria    Json?
+  internalCompensation Json?
+  publicCompensation Json?
+  sourceRefs         Json
+  origin             String   @default("jd_module")
+  mappingStatus      String   @default("consistent")
+  contentHash        String
+  createdBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([workspaceId, jobId, revision])
+  @@index([workspaceId, jobId, status])
+}
+
+model IdempotencyKey {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  operation     String
+  key           String
+  requestHash   String
+  responseBody  Json
+  createdAt     DateTime @default(now())
+
+  @@unique([workspaceId, operation, key])
+}
+
+model CopilotConversation {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  actorId       String
+  jobId         String?
+  phase         String   @default("intake")
+  fields        Json     @default("{}")
+  missingFields Json     @default("[]")
+  stateRevision Int      @default(0)
+  summary       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages CopilotMessage[]
+  runs     AiRun[]
+
+  @@index([workspaceId, actorId, updatedAt])
+}
+
+model CopilotMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  sequence       Int
+  role           String
+  text           String?
+  attachments    Json?
+  idempotencyKey String?
+  createdAt      DateTime @default(now())
+
+  conversation CopilotConversation @relation(fields: [conversationId], references: [id])
+
+  @@unique([conversationId, sequence])
+}
+
+model AiRun {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  conversationId String?
+  capabilityCode String
+  status         String   @default("Queued")
+  resultJson     Json?
+  failureCode    String?
+  idempotencyKey String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  conversation CopilotConversation? @relation(fields: [conversationId], references: [id])
+
+  @@index([workspaceId, capabilityCode, status])
+}
