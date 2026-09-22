@@ -21,10 +21,12 @@ function buildSystemPrompt(skillDir: string): string {
 export class PromptRegistry {
   private readonly intakePrompt: string;
   private readonly fileExtractPrompt: string;
+  private readonly autotakePrompt: string;
 
   constructor() {
     this.intakePrompt = buildSystemPrompt(join(__dirname, 'skills', 'jd-intake'));
     this.fileExtractPrompt = buildSystemPrompt(join(__dirname, 'skills', 'jd-file-extract'));
+    this.autotakePrompt = buildSystemPrompt(join(__dirname, 'skills', 'jd-autotake'));
   }
 
   get jdIntakeSystemPrompt(): string {
@@ -33,5 +35,9 @@ export class PromptRegistry {
 
   get jdFileExtractSystemPrompt(): string {
     return this.fileExtractPrompt;
+  }
+
+  get jdAutotakeSystemPrompt(): string {
+    return this.autotakePrompt;
   }
 }

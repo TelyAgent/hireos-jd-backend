@@ -333,6 +333,52 @@ export class CopilotService {
     return this.commitTurn(identity, id, prep, parsed);
   }
 
+  /**
+   * "Auto-complete and optimize": a deliberately different mode from the conversational intake turn
+   * above. Where intake asks one question at a time and refuses to invent facts, this one is a single
+   * turn that must fill in every remaining required field with reasonable, clearly-editable
+   * industry-standard suggestions and land on `ready_to_confirm` — matching the old project's separate
+   * `guided` vs `automatic` creation modes (jd-intake vs jd-autotake), which this service didn't have
+   * before: it only ever asked narrow clarifying questions, even when the user explicitly asked for a
+   * complete draft instead.
+   */
+  async autoComplete(identity: Identity, id: string, meta: RequestMeta) {
+    const conversation = await this.loadConversation(identity, id);
+    if (conversation.phase === 'completed') throw new ConflictException({ code: 'CONVERSATION_COMPLETED' });
+    const key = meta.idempotencyKey?.trim();
+    if (!key) throw new ConflictException({ code: 'IDEMPOTENCY_KEY_REQUIRED' });
+    const operation = `copilot.autocomplete:${id}`;
+    const userText = '自动补全并优化内容';
+    const hash = requestHash({ userText });
+
+    const existing = await this.db.idempotencyKey.findUnique({
+      where: { workspaceId_operation_key: { workspaceId: identity.workspaceId, operation, key } },
+    });
+    if (existing) {
+      if (existing.requestHash !== hash) throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT' });
+      return existing.responseBody;
+    }
+
+    const history = await this.db.copilotMessage.findMany({ where: { conversationId: id }, orderBy: { sequence: 'asc' } });
+    const turns: ChatTurn[] = [
+      ...history.map((message) => ({ role: message.role as 'user' | 'assistant', content: message.text || '' })),
+      { role: 'user', content: userText },
+    ];
+    const parsed = await this.runAutoCompleteTurn(identity, id, turns);
+
+    const prep: Extract<TurnPrep, { cached: null }> = {
+      cached: null,
+      operation,
+      key,
+      hash,
+      userMessage: { text: userText },
+      capabilityCode: 'jd_autotake_turn',
+      turns,
+      currentFields: asRecord(conversation.fields) as JdFields,
+    };
+    return this.commitTurn(identity, id, prep, parsed);
+  }
+
   private async loadConversation(identity: Identity, id: string): Promise<ConversationRow> {
     const conversation = await this.db.copilotConversation.findFirst({ where: { id, workspaceId: identity.workspaceId } });
     if (!conversation) throw new NotFoundException({ code: 'CONVERSATION_NOT_FOUND' });
@@ -360,6 +406,18 @@ export class CopilotService {
       return parsed;
     } catch (error) {
       throw await this.recordLlmFailure(identity, conversationId, 'jd_file_extract_turn', error);
+    }
+  }
+
+  private async runAutoCompleteTurn(identity: Identity, conversationId: string, turns: ChatTurn[]): Promise<LlmTurnResult> {
+    const startedAt = Date.now();
+    try {
+      const raw = await this.llm.completeJson(this.prompts.jdAutotakeSystemPrompt, turns);
+      const parsed = llmTurnResultSchema.parse(JSON.parse(raw));
+      this.logger.log(`jd_autotake_turn succeeded in ${Date.now() - startedAt}ms (conversation=${conversationId})`);
+      return parsed;
+    } catch (error) {
+      throw await this.recordLlmFailure(identity, conversationId, 'jd_autotake_turn', error);
     }
   }
 

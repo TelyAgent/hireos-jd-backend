@@ -86,6 +86,15 @@ export class CopilotController {
     return this.copilot.confirmDraft(req.identity, id, meta(headers));
   }
 
+  @Post(':id/auto-complete')
+  autoComplete(
+    @Req() req: { identity: Identity },
+    @Headers() headers: Record<string, string | undefined>,
+    @Param('id') id: string,
+  ) {
+    return this.copilot.autoComplete(req.identity, id, meta(headers));
+  }
+
   @Post(':id/attachments')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_ATTACHMENT_BYTES } }))
   uploadAttachment(
