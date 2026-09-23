@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import type { Identity } from '../auth/workspace.guard';
@@ -28,6 +28,9 @@ export type CoreJob = {
   status: string;
   openings: number;
   version: number;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 @Injectable()
@@ -42,6 +45,19 @@ export class CoreRecordClient {
 
   async createJob(identity: Identity, body: unknown, idempotencyKey: string) {
     return this.request<CoreJob>('/jobs', identity, 'POST', body, idempotencyKey);
+  }
+
+  async listJobs(identity: Identity, q?: string) {
+    const query = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+    return this.request<CoreJob[]>(`/jobs${query}`, identity, 'GET');
+  }
+
+  async getJob(identity: Identity, jobId: string) {
+    return this.request<CoreJob>(`/jobs/${jobId}`, identity, 'GET');
+  }
+
+  async deleteJob(identity: Identity, jobId: string, idempotencyKey: string) {
+    return this.request<{ id: string; deleted: boolean }>(`/jobs/${jobId}`, identity, 'DELETE', undefined, idempotencyKey);
   }
 
   async createRoleVersion(identity: Identity, jobId: string, body: unknown, idempotencyKey: string) {
@@ -60,7 +76,7 @@ export class CoreRecordClient {
     return this.request<CoreRoleVersion>(`/jobs/${jobId}/role-versions/${roleVersionId}/confirm`, identity, 'POST', body, idempotencyKey);
   }
 
-  private async request<T>(path: string, identity: Identity, method: 'GET' | 'POST' | 'PATCH', body?: unknown, idempotencyKey?: string) {
+  private async request<T>(path: string, identity: Identity, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', body?: unknown, idempotencyKey?: string) {
     const response = await globalThis.fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -77,6 +93,7 @@ export class CoreRecordClient {
     if (!response.ok) {
       const error = result as { code?: string; message?: string };
       if (response.status === 409) throw new ConflictException({ code: error.code || 'CORE_RECORD_CONFLICT', message: error.message });
+      if (response.status === 404) throw new NotFoundException({ code: error.code || 'CORE_RECORD_NOT_FOUND', message: error.message });
       throw new ServiceUnavailableException({ code: error.code || 'CORE_RECORD_UNAVAILABLE', message: error.message });
     }
     return result as T;
